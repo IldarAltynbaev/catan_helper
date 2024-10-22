@@ -20,7 +20,7 @@ class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName('1UI')
         MainWindow.setMinimumSize(QtCore.QSize(424, 424))
-        MainWindow.setMaximumSize(QtCore.QSize(424, 424))
+        MainWindow.setMaximumSize(QtCore.QSize(1000, 1000))
 
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName('centralwidget')
@@ -35,11 +35,11 @@ class Ui_MainWindow(object):
         #self.queenBrowser.setReadOnly(True)
         #self.queenBrowser.setObjectName('queenBrowser')    
              
-        #self.background = QtWidgets.QLabel(self.centralwidget)
-        #self.background.resize(424, 433)
+        self.background = QtWidgets.QLabel(self.centralwidget)
+        self.background.resize(800, 800)
      
         self.queenBrowser = QtWidgets.QTextBrowser(self.background)
-        self.queenBrowser.setGeometry(QtCore.QRect(200, 190, 20, 500))  
+        self.queenBrowser.setGeometry(QtCore.QRect(200, 190, 600, 600))  
         self.queenBrowser.setReadOnly(True)
         self.queenBrowser.setObjectName('queenBrowser')         
       
@@ -88,30 +88,30 @@ if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     w = MyWin()
     
-    #move_right_bottom_corner(w)
+    move_right_bottom_corner(w)
     w.show()
-    '''
-    while True:
+    
+    #while True:
        
-        img = pyautogui.screenshot()
-        frame = np.array(img)
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        #img = pyautogui.screenshot()
+        #frame = np.array(img)
+        #frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         #out.write(frame)
         
         # Optional: Display the recording screen
         #cv2.imshow('Live', frame)
-        results = model.track(frame)
-        for each_box in results[0].boxes:
-            if each_box.conf > 0.5:
-                ccurrent_max_id = each_box.id.max()
-                w.set_text(str(ccurrent_max_id))
+    results = model.track(source='screen',conf = 0.5)
+    for each_box in results[0].boxes:
+        if (each_box.conf > 0.5) & (each_box.id is not None):
+            ccurrent_max_id = each_box.id.max()
+            w.set_text(str(ccurrent_max_id))
 
                 
 
         
         # Stop recording when we press 'q'
-        if cv2.waitKey(1) == ord('q'):
-            break
+        #if cv2.waitKey(1) == ord('q'):
+        #    break
     
     # Release the Video writer
     #out.release()
@@ -120,5 +120,5 @@ if __name__ == '__main__':
     # Destroy all windows
     cv2.destroyAllWindows()
    
-    '''
+    
     sys.exit(app.exec_())
