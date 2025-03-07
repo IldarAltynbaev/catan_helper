@@ -7,16 +7,15 @@ from threading import Thread
 import cv2 
 import numpy as np 
 import easyocr
-import matplotlib.pyplot as plt
-import pyautogui
-import cv2
+#import matplotlib.pyplot as plt
+#import pyautogui
 import numpy as np
 from ultralytics import YOLO
 import torch
 from torchvision import transforms, models
 from PIL import Image
-from matplotlib import cm
-from shapely.geometry import Polygon
+#from matplotlib import cm
+#from shapely.geometry import Polygon
 import datetime
 
 #config_file = 'data/settings.ini'
