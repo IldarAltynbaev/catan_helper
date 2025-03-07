@@ -495,7 +495,7 @@ class CatanHelperWorker(QObject):
                     self.dataChanged.emit(display_text)        
                     
                     
-
+#test
 class MainWindow(QtWidgets.QMainWindow):
              
     def __init__(self):
