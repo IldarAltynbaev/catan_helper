@@ -12,6 +12,7 @@ from ultralytics import YOLO
 import torch
 from torchvision import transforms, models
 from PIL import Image
+from screeninfo import get_monitors
 
 import timm
 import datetime
@@ -368,10 +369,10 @@ class CatanHelperWorker(QObject):
         allowlist = '0123456789+-Oo#l'
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        monitor = sct.monitors[1]  # Index 0 is all monitors, 1 is primary
-        screen_width = monitor["width"]
-        screen_height = monitor["height"]
-
+        monitor = get_monitors()[0]  # Index 0 is all monitors, 1 is primary
+        screen_width = monitor.width
+        screen_height = monitor.height
+        
         one_fifth_hight = screen_height // 5
         moniro_top = {"top": 0, "left": 0, "width": screen_width, "height": one_fifth_hight}
         selected_region = moniro_top
