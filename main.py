@@ -72,7 +72,7 @@ class CatanHelperWorker(QObject):
                 #if isinstance(param, torch.nn.Conv2d):
                     param.requires_grad = False
 
-        model.fc = torch.nn.Linear(model.fc.in_features, 5)    
+        model.fc = torch.nn.Linear(model.fc.in_features, 6)    
         #model = model.to(device)
         return model
     
@@ -90,7 +90,7 @@ class CatanHelperWorker(QObject):
         model_yolo = YOLO("C:/catan_universe_project/catan_helper/best_model_yolo11.pt")
         model_yolo_segmentagion = YOLO("C:/catan_universe_project/catan_helper/yolo11_segmentation.pt")
         model_resnet = self.create_blank_model(freeze_layers = True)
-        model_resnet.load_state_dict(torch.load('C:/catan_universe_project/catan_helper/best_model_resnet.pt',
+        model_resnet.load_state_dict(torch.load('C:/catan_universe_project/catan_helper/best_model_resnet_2.pt',
                                                map_location=torch.device('cpu')))
         #mode_resnet.to(device)
         model_yolo_digit_detection = YOLO("C:\catan_universe_project\catan_helper\yolo11_digit_detection.pt")
@@ -321,8 +321,12 @@ class CatanHelperWorker(QObject):
 
     def create_hsv_arrays(self):
 
-        hsv_green1 = np.asarray([50, 0, 0])   
-        hsv_green2 = np.asarray([59, 255, 255])   
+        
+        hsv_green1 = np.asarray([52, 92, 154])   
+        hsv_green2 = np.asarray([179, 161, 255])   
+
+        #hsv_green1 = np.asarray([50, 0, 0])   
+        #hsv_green2 = np.asarray([59, 255, 255])   
 
         hsv_red1 = np.asarray([0, 117, 175])   
         hsv_red2 = np.asarray([3, 178, 255])   
@@ -397,6 +401,7 @@ class CatanHelperWorker(QObject):
         display_text = ''
 
         player1 = Catan_player()
+        player2 = Catan_player()
         player3 = Catan_player()
         count = 0
 
@@ -494,6 +499,30 @@ class CatanHelperWorker(QObject):
                                 #cv2.imwrite('C:/catan_github/catan_helper/testing/'+'_' + str(current_player) + '_' + str(count_1) +'_' + str(resource_count) +'_' + str(resource_type) + '.png', res_pic)
                                 player1.previous_detection_time = datetime.datetime.now()
 
+                            if current_player == 2:
+                                if datetime.datetime.now() - player2.previous_detection_time > delay_delta:
+
+                                    player2.current_detection_count = player2.current_detection_count + 1                                                                                      
+                                    if display_text.count('\n') > 9:
+                                        display_text = ''
+
+                                    display_text = display_text + str(current_player) + '_' + sign_result +'_' + str(resource_count) +'_' + str(resource_type) + '\n'
+                                    player2.previous_recource_type = resource_type
+                                    player2.previous_resource_count = resource_count
+
+                                else:
+                                    
+                                    if (resource_type != player2.previous_recource_type) & (resource_count != player2.previous_resource_count):
+                                        
+                                        if display_text.count('\n') > 9:
+                                            display_text = ''
+                                        display_text = display_text + str(current_player) + '_' + sign_result + '_' + str(resource_count) +'_' + str(resource_type) + '\n'
+                                    player2.previous_recource_type = resource_type
+                                    player2.previous_resource_count = resource_count
+
+                                #cv2.imwrite('C:/catan_github/catan_helper/testing/'+'_' + str(current_player) + '_' + str(count_1) +'_' + str(resource_count) +'_' + str(resource_type) + '.png', res_pic)
+                                player2.previous_detection_time = datetime.datetime.now()
+
                             elif current_player == 3:
                                 if datetime.datetime.now() - player3.previous_detection_time > delay_delta:
 
@@ -511,7 +540,7 @@ class CatanHelperWorker(QObject):
                                         
                                         if display_text.count('\n') > 9:
                                             display_text = ''
-                                        display_text = display_text + str(current_player) + '_' + sign_result + str(player3.current_detection_count) +'_' + str(resource_count) +'_' + str(resource_type) + '\n'
+                                        display_text = display_text + str(current_player) + '_' + sign_result + '_' + str(resource_count) +'_' + str(resource_type) + '\n'
                                     player3.previous_recource_type = resource_type
                                     player3.previous_resource_count = resource_count
 

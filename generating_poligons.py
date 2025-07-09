@@ -3,8 +3,8 @@ import os
 import cv2
 
 
-input_dir = 'C:/catan_universe_project/catan_dataset/task_1352797_annotations_2025_04_28_16_29_32_segmentation mask 1.1/SegmentationClass'
-output_dir = 'C:/catan_universe_project/catan_dataset/task_1352797_annotations_2025_04_28_16_29_32_segmentation mask 1.1/lab'
+input_dir = 'C:/catan_universe_project/catan_dataset/digit_detection_dataset/colored_digit_segmentation_dataset/masks'
+output_dir = 'C:/catan_universe_project/catan_dataset/digit_detection_dataset/colored_digit_segmentation_dataset/labels'
 
 for j in os.listdir(input_dir):
     image_path = os.path.join(input_dir, j)
