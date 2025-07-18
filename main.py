@@ -19,16 +19,20 @@ import datetime
 import torchvision
 
 class Catan_player():
-        def __init__(self):
+        def __init__(self, player_number):
             self.previous_detection_time = datetime.datetime.now()
             self.previous_resource_count = ''
             self.previous_recource_type = ''
+            self.previous_sign_result = ''
             self.stone_count = 0
             self.wheat_count = 0
             self.sheep_count = 0
             self.brick_count = 0
             self.wood_count = 0
+            self.unknown_count = 0
             self.current_detection_count = 0
+            self.player_number = player_number
+            
 
 class Ui_MainWindow(object):
     
@@ -88,26 +92,26 @@ class CatanHelperWorker(QObject):
     def initialize_models(self):
 
         model_yolo = YOLO("C:/catan_universe_project/catan_helper/best_model_yolo11.pt")
-        model_yolo_segmentagion = YOLO("C:/catan_universe_project/catan_helper/yolo11_segmentation.pt")
+        model_yolo_segmentagion = YOLO("C:/catan_universe_project/catan_helper/yolo11_segmentaion_all.pt")
         model_resnet = self.create_blank_model(freeze_layers = True)
         model_resnet.load_state_dict(torch.load('C:/catan_universe_project/catan_helper/best_model_resnet_2.pt',
                                                map_location=torch.device('cpu')))
         #mode_resnet.to(device)
-        model_yolo_digit_detection = YOLO("C:\catan_universe_project\catan_helper\yolo11_digit_detection.pt")
+        #model_yolo_digit_detection = YOLO("C:\catan_universe_project\catan_helper\yolo11_digit_detection.pt")
         model_resnet.eval()
 
-        resnet_mnist = timm.create_model("resnet18", pretrained=False, num_classes=10)
-        resnet_mnist.conv1 = torch.nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        resnet_mnist.load_state_dict(
-        torch.hub.load_state_dict_from_url(
-            "https://huggingface.co/gpcarl123/resnet18_mnist/resolve/main/resnet18_mnist.pth",
-            map_location="cpu",
-            file_name="resnet18_mnist.pth",
-        )
-        )
-        resnet_mnist.eval()
+        #resnet_mnist = timm.create_model("resnet18", pretrained=False, num_classes=10)
+        #resnet_mnist.conv1 = torch.nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        #resnet_mnist.load_state_dict(
+        #torch.hub.load_state_dict_from_url(
+        #    "https://huggingface.co/gpcarl123/resnet18_mnist/resolve/main/resnet18_mnist.pth",
+        #    map_location="cpu",
+        #    file_name="resnet18_mnist.pth",
+        #)
+        #)
+        #resnet_mnist.eval()
 
-        return model_yolo, model_resnet, model_yolo_segmentagion, model_yolo_digit_detection, resnet_mnist
+        return model_yolo, model_resnet, model_yolo_segmentagion #, model_yolo_digit_detection, resnet_mnist
 
     def initialize_reader(self):
 
@@ -124,10 +128,26 @@ class CatanHelperWorker(QObject):
         elif resource_result == 2:
             resource_name = 'stone'
         elif resource_result == 3:
-            resource_name = 'wheat'
+            resource_name = 'unknown'
         elif resource_result == 4:
+            resource_name = 'wheat'
+        elif resource_result == 5:
             resource_name = 'wood'
-        
+
+        '''
+        if resource_result == 0:
+            resource_name = 'wood'
+        elif resource_result == 1:
+            resource_name = 'wheat'
+        elif resource_result == 2:
+            resource_name = 'stone'
+        elif resource_result == 3:
+            resource_name = 'brick'
+        elif resource_result == 4:
+            resource_name = 'sheep'
+        elif resource_result == 5:
+            resource_name = 'unknown'
+        '''
         return resource_name
 
     def get_current_player_by_region(self, each_box):
@@ -291,7 +311,7 @@ class CatanHelperWorker(QObject):
     def get_resource_type_from_img(self, pred_transforms, model_resnet, box_img,device):
 
         _, width, _ = box_img.shape
-        width_cutoff = int(width / 2.3)
+        width_cutoff = int(width / 2)
         cropped_box_img = box_img[:, width_cutoff:]
         cropped_box_img = cv2.cvtColor(cropped_box_img, cv2.COLOR_BGR2RGB)
         cropped_box_img = Image.fromarray(cropped_box_img)
@@ -299,9 +319,11 @@ class CatanHelperWorker(QObject):
         transformed_cropped_img = transformed_cropped_img.to(device)
         pred = model_resnet(transformed_cropped_img.unsqueeze(0))
         resource_result = pred.argmax().item()
+
+        confidence = torch.nn.functional.softmax(pred[0], dim=0).max().item()
         resource_name = self.get_resource_name(resource_result)
 
-        return resource_name
+        return resource_name, confidence
 
     def check_for_the_same_detection(self,
                                      prior_resource_type_pl,
@@ -336,14 +358,13 @@ class CatanHelperWorker(QObject):
 
         return hsv_green1, hsv_green2, hsv_red1, hsv_red2, hsv_red3, hsv_red4
 
-    def resource_count_is_correct(self,resource_count,sign_result):
-
-        max_resource_count = 40
-        if ((len(resource_count) > 0) & (sign_result!='')):
-            if resource_count.isdigit():
-                if int(resource_count) < max_resource_count:
+    def resource_count_is_correct(self, sign_count_result, resource_confidence):
     
-                    return True
+        if len(sign_count_result) >= 2:
+            if (sign_count_result[0] == '+') | (sign_count_result[0] == '-'):            
+                if sign_count_result[1:].isdigit():
+                    if resource_confidence >= 0.9:
+                        return True
             
         return False
     
@@ -355,22 +376,146 @@ class CatanHelperWorker(QObject):
 
         return torchvision.transforms.Normalize((0.1307,), (0.3081,))
     
-    def get_sign(self,model_yolo_segmentation, box_img):
-        sign_result = model_yolo_segmentation(box_img)
-        if len(sign_result)>0:
-            if len(sign_result[0].boxes.cls)>0:
-                max_right_point = sign_result[0].masks.xy[0].max(axis=0)[0]
-                if  sign_result[0].boxes.cls[0].item() == 0.0:
-                    return '-', int(max_right_point) 
-                elif sign_result[0].boxes.cls[0].item() == 1.0:
-                    return '+', int(max_right_point)
+    def get_current_text(self, delay_delta, player, sign_result, resource_count, resource_type):
+
+        display_text = ''
+        
+        if datetime.datetime.now() - player.previous_detection_time > delay_delta:
+
+            player.current_detection_count = player.current_detection_count + 1                                                                                      
+            if display_text.count('\n') > 9:
+                display_text = ''
+
+            display_text = display_text + str(player.player_number) + '_' + sign_result +'_' + str(resource_count) +'_' + str(resource_type) + '\n'
+            player.previous_recource_type = resource_type
+            player.previous_resource_count = resource_count
+            player.previous_sign_result = sign_result
+
+        else:
+        
+            if (resource_type != player.previous_recource_type) | (resource_count != player.previous_resource_count) \
+                | (sign_result != player.previous_sign_result):
                 
-        return '', 0
+                display_text = display_text + str(player.player_number) + '_' + sign_result + '_' + str(resource_count) +'_' + str(resource_type) + '\n'
+            player.previous_recource_type = resource_type
+            player.previous_resource_count = resource_count
+            player.previous_sign_result = sign_result
+
+            #cv2.imwrite('C:/catan_github/catan_helper/testing/'+'_' + str(current_player) + '_' + str(count_1) +'_' + str(resource_count) +'_' + str(resource_type) + '.png', res_pic)
+        player.previous_detection_time = datetime.datetime.now()
+
+        return display_text
+    
+    def get_result_string(self, each_box,result_tensor,output_string):
+
+        xy_list = each_box.masks.xy
+        first_elements = np.array([x.min(axis=0)[0] for x in xy_list])
+
+        sort_key = torch.from_numpy(first_elements)
+        sorted_indices = torch.argsort(sort_key)
+        sorted_tensor = result_tensor[sorted_indices]
+
+        for each_element in sorted_tensor:
+            if each_element == 0:
+                output_string = output_string + "-"
+            elif each_element == 11:
+                output_string = output_string + "+"
+            elif each_element == 1:
+                output_string = output_string + "1"
+            elif each_element == 2:
+                output_string = output_string + "2"
+            elif each_element == 3:
+                output_string = output_string + "3"
+            elif each_element == 4:
+                output_string = output_string + "4"
+            elif each_element == 5:
+                output_string = output_string + "5"
+            elif each_element == 6:
+                output_string = output_string + "6"
+            elif each_element == 7:
+                output_string = output_string + "7"
+            elif each_element == 8:
+                output_string = output_string + "8"
+            elif each_element == 9:
+                output_string = output_string + "9"
+            elif each_element == 10:
+                output_string = output_string + "0"
+
+        return output_string
+
+    def add_resource_to_player(self,player, resource_type, resource_count, sign_result):
+        
+        formula = "player_count" + sign_result + "current_count"
+        current_count = resource_count
+
+        if resource_type == 'wood':
+            player_count = player.wood_count
+            player.wood_count = eval(formula)
+        elif resource_type == 'sheep':
+            player_count = player.sheep_count
+            player.sheep_count = eval(formula)
+        elif resource_type == 'wheat':
+            player_count = player.wheat_count
+            player.wheat_count = eval(formula)
+        elif resource_type == 'stone':
+            player_count = player.stone_count
+            player.stone_count = eval(formula)
+        elif resource_type == 'brick':
+            player_count = player.brick_count
+            player.brick_count = eval(formula)
+        elif resource_type == 'unknown':
+            player_count = player.unknown_count
+            player.unknown_count = eval(formula)
+
+    def get_sign_and_resource_count(self,model_yolo_segmentation, box_img):
+
+        
+        segmentation_result = model_yolo_segmentation(box_img,conf = 0.9)
+        output_string = ''
+
+        need_invert_color = False
+
+        for each_box in segmentation_result:
+            
+            if each_box.masks is None:
+                return ''
+            
+            
+
+            result_tensor = each_box.boxes.cls
+            #confidence_tensor = each_box.boxes.conf
+             
+            exists = (result_tensor == 11).any()
+             
+            if not exists:
+                need_invert_color = True
+                break
+            
+            output_string = self.get_result_string(each_box,result_tensor,output_string)      
+
+        if need_invert_color:
+
+            blue, green, red = cv2.split(box_img)
+            inverted_img = cv2.merge([blue, red, green])
+            segmentation_result = model_yolo_segmentation(inverted_img, conf = 0.8)
+            for each_box in segmentation_result:
+
+                result_tensor = each_box.boxes.cls
+                if each_box.masks is None:
+                    return ''
+             
+                exists = (result_tensor == 0).any()
+                if not exists:
+                    break
+
+                output_string = self.get_result_string(each_box,result_tensor,output_string)
+
+        return output_string      
+
+     
     
     def _execute(self):
 
-        reader = self.initialize_reader()
-        allowlist = '0123456789+-Oo#l'
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         monitor = get_monitors()[0]  # Index 0 is all monitors, 1 is primary
@@ -381,28 +526,23 @@ class CatanHelperWorker(QObject):
         moniro_top = {"top": 0, "left": 0, "width": screen_width, "height": one_fifth_hight}
         selected_region = moniro_top
 
-        model_yolo, model_resnet, model_yolo_segmentation, \
-        model_yolo_digit_detection, resnet_mnist = self.initialize_models()
+        model_yolo, model_resnet, model_yolo_segmentation = self.initialize_models()
 
         model_yolo_segmentation.to(device)
-        model_yolo_digit_detection.to(device)
+      
         model_yolo.to(device)
         model_resnet.to(device)
 
     
-        hsv_green1, hsv_green2, hsv_red1, hsv_red2, hsv_red3, hsv_red4 = self.create_hsv_arrays()   
         pred_transforms = self.create_transforms()
-        mnist_transforms = self.create_mnist_transforms()
-        mnist_preprocessor = self.create_mnist_preprocessor()
 
-        delay_delta = datetime.timedelta(seconds=0.2)
-        
+        delay_delta = datetime.timedelta(seconds=0.5)     
         
         display_text = ''
 
-        player1 = Catan_player()
-        player2 = Catan_player()
-        player3 = Catan_player()
+        player1 = Catan_player(player_number=1)
+        player2 = Catan_player(player_number=2)
+        player3 = Catan_player(player_number=3)
         count = 0
 
         with mss() as sct:
@@ -411,261 +551,50 @@ class CatanHelperWorker(QObject):
                 frame = cv2.cvtColor(screen, cv2.COLOR_BGRA2BGR)
                 results_track = model_yolo.track(frame, persist=True)
                 results = results_track[0]
-        #for results in model_yolo.track(source='screen',conf=0.5, stream = True, show=False):
+        
                 for each_box in results.boxes:
+                    if each_box.cls[0].item() == 1.0:
+                        break
                     if (each_box.conf > 0.5) & (each_box.id is not None):
 
                         
                         box_img = results.orig_img[int(each_box.xyxy[0,1]):int(each_box.xyxy[0,3]),\
                                                         int(each_box.xyxy[0,0]):int(each_box.xyxy[0,2])]
-                        #cv2.imwrite('C:/catan_testing/' + str(each_box.conf)+'.png', box_img)
+                       
                         count = count + 1
                         current_player = self.get_current_player_by_region(each_box)   
-                        sign_result, max_right_point = self.get_sign(model_yolo_segmentation,box_img)
-
-
-
-                        resource_count,green_pic, red_pic, det_pic = self.get_resource_count_from_img(results,
-                                                        each_box,
-                                                        reader,
-                                                        hsv_green1,
-                                                        hsv_green2,
-                                                        hsv_red1, 
-                                                        hsv_red2, 
-                                                        hsv_red3, 
-                                                        hsv_red4,
-                                                        box_img,
-                                                        allowlist,
-                                                        max_right_point,
-                                                        sign_result,
-                                                        model_yolo_digit_detection,
-                                                        count,
-                                                        resnet_mnist,
-                                                        mnist_transforms,
-                                                        mnist_preprocessor
-                                                        )
-                        count = count + 1
+                        sign_count_result = self.get_sign_and_resource_count(model_yolo_segmentation,box_img)                  
                         
-                        resource_type = self.get_resource_type_from_img(pred_transforms,
+                        resource_type, resource_confidence = self.get_resource_type_from_img(pred_transforms,
                                                                         model_resnet,
                                                                         box_img,device) 
-                        #if display_text.count('\n') > 9:
-                        #                display_text = ''
-                        #display_text = display_text + str(current_player) + '_' + sign_result + '_' + str(resource_count) +'_' + str(resource_type) + '\n'
-                        #self.dataChanged.emit(display_text)  
+                                      
                         
-                        
-                        #green_pic = np.expand_dims(green_pic, axis = 2)
-                        #green_pic =np.repeat(green_pic, 3 , axis=2)
-                        
-                        #red_pic = np.expand_dims(red_pic, axis = 2)
-                        #red_pic = np.repeat(red_pic, 3 , axis=2)
-                        base = np.zeros(box_img.shape, dtype=int)
-                        base = base.astype(np.uint8)
+                        if self.resource_count_is_correct(sign_count_result, resource_confidence):
+                            sign_result = sign_count_result[0]
+                            resource_count = sign_count_result[1:]
 
-                        if det_pic is not None:
-                            
-                            position_x, position_y = 1, 1
-                            base[position_x:position_x+det_pic.shape[0], position_y:position_y+det_pic.shape[1]] = det_pic
-
-                        
-                        res_pic = cv2.vconcat([box_img, green_pic, red_pic, base])
-                        cv2.imwrite('C:/catan_testing/' + sign_result + str(resource_count) +'_' + str(resource_type) + '.png', res_pic)
-                        #res_pic = green_pic
-                        #res_pic = np.invert(green_pic)               
-                        
-                        if self.resource_count_is_correct(resource_count, sign_result):
                             if current_player == 1:
-                                if datetime.datetime.now() - player1.previous_detection_time > delay_delta:
 
-                                    player1.current_detection_count = player1.current_detection_count + 1                                                                                      
-                                    if display_text.count('\n') > 9:
-                                        display_text = ''
+                                self.add_resource_to_player(player1, resource_type, resource_count, sign_result)
 
-                                    display_text = display_text + str(current_player) + '_' + sign_result +'_' + str(resource_count) +'_' + str(resource_type) + '\n'
-                                    player1.previous_recource_type = resource_type
-                                    player1.previous_resource_count = resource_count
-
-                                else:
-                                    
-                                    if (resource_type != player1.previous_recource_type) & (resource_count != player1.previous_resource_count):
-                                        
-                                        if display_text.count('\n') > 9:
-                                            display_text = ''
-                                        display_text = display_text + str(current_player) + '_' + sign_result + '_' + str(resource_count) +'_' + str(resource_type) + '\n'
-                                    player1.previous_recource_type = resource_type
-                                    player1.previous_resource_count = resource_count
-
-                                #cv2.imwrite('C:/catan_github/catan_helper/testing/'+'_' + str(current_player) + '_' + str(count_1) +'_' + str(resource_count) +'_' + str(resource_type) + '.png', res_pic)
-                                player1.previous_detection_time = datetime.datetime.now()
-
-                            if current_player == 2:
-                                if datetime.datetime.now() - player2.previous_detection_time > delay_delta:
-
-                                    player2.current_detection_count = player2.current_detection_count + 1                                                                                      
-                                    if display_text.count('\n') > 9:
-                                        display_text = ''
-
-                                    display_text = display_text + str(current_player) + '_' + sign_result +'_' + str(resource_count) +'_' + str(resource_type) + '\n'
-                                    player2.previous_recource_type = resource_type
-                                    player2.previous_resource_count = resource_count
-
-                                else:
-                                    
-                                    if (resource_type != player2.previous_recource_type) & (resource_count != player2.previous_resource_count):
-                                        
-                                        if display_text.count('\n') > 9:
-                                            display_text = ''
-                                        display_text = display_text + str(current_player) + '_' + sign_result + '_' + str(resource_count) +'_' + str(resource_type) + '\n'
-                                    player2.previous_recource_type = resource_type
-                                    player2.previous_resource_count = resource_count
-
-                                #cv2.imwrite('C:/catan_github/catan_helper/testing/'+'_' + str(current_player) + '_' + str(count_1) +'_' + str(resource_count) +'_' + str(resource_type) + '.png', res_pic)
-                                player2.previous_detection_time = datetime.datetime.now()
+                                
+                            elif current_player == 2:
+                            
+                                self.add_resource_to_player(player2, resource_type, resource_count, sign_result)
 
                             elif current_player == 3:
-                                if datetime.datetime.now() - player3.previous_detection_time > delay_delta:
-
-                                    player3.current_detection_count = player3.current_detection_count + 1                                                                                      
-                                    if display_text.count('\n') > 9:
-                                        display_text = ''
-
-                                    display_text = display_text + str(current_player) + '_' + sign_result + '_' + str(resource_count) +'_' + str(resource_type) + '\n'
-                                    player3.previous_recource_type = resource_type
-                                    player3.previous_resource_count = resource_count
-
-                                else:
-                                    
-                                    if (resource_type != player3.previous_recource_type) & (resource_count != player3.previous_resource_count):
-                                        
-                                        if display_text.count('\n') > 9:
-                                            display_text = ''
-                                        display_text = display_text + str(current_player) + '_' + sign_result + '_' + str(resource_count) +'_' + str(resource_type) + '\n'
-                                    player3.previous_recource_type = resource_type
-                                    player3.previous_resource_count = resource_count
-
-                                #cv2.imwrite('C:/catan_github/catan_helper/testing/'+'_' + str(current_player) + '_' + str(count_1) +'_' + str(resource_count) +'_' + str(resource_type) + '.png', res_pic)
-                                player3.previous_detection_time = datetime.datetime.now()
+                                
+                                self.add_resource_to_player(player2, resource_type, resource_count, sign_result)
                         
+                            
+                            display_text = 
+                    
                         
-                        #cv2.imwrite('C:/catan_testing/'+'_' + str(current_player) +'_green_' + sign_result + '_' + str(resource_count) +'_' + str(resource_type) + '.png', green_pic)
-                        #cv2.imwrite('C:/catan_testing/'+'_' + str(current_player) +'_red_' + sign_result + '_' + str(resource_count) +'_' + str(resource_type) + '.png', red_pic)
-                        '''  
-                        try:
-                            if resource_count[0] == '+':
-
-                                if current_player == 1:
-                                    if resource_type == 'wood':
-                                        player1_wood = player1_wood + int(resource_count[1:])
-                                    elif resource_type == 'sheep':
-                                        player1_sheep = player1_sheep + int(resource_count[1:])
-                                    elif resource_type == 'wheat':
-                                        player1_wheat = player1_wheat + int(resource_count[1:])
-                                    elif resource_type == 'stone':
-                                        player1_stone = player1_stone + int(resource_count[1:])
-                                    else:
-                                        player1_brick = player1_brick + int(resource_count[1:])
-                                elif current_player == 2:
-                                    if resource_type == 'wood':
-                                        player2_wood = player2_wood + int(resource_count[1:])
-                                    elif resource_type == 'sheep':
-                                        player2_sheep = player2_sheep + int(resource_count[1:])
-                                    elif resource_type == 'wheat':
-                                        player2_wheat = player2_wheat + int(resource_count[1:])
-                                    elif resource_type == 'stone':
-                                        player2_stone = player2_stone + int(resource_count[1:])
-                                    else:
-                                        player2_brick = player2_brick + int(resource_count[1:])
-                                else:
-                                    if resource_type == 'wood':
-                                        player3_wood = player3_wood + int(resource_count[1:])
-                                    elif resource_type == 'sheep':
-                                        player3_sheep = player3_sheep + int(resource_count[1:])
-                                    elif resource_type == 'wheat':
-                                        player3_wheat = player3_wheat + int(resource_count[1:])
-                                    elif resource_type == 'stone':
-                                        player3_stone = player3_stone + int(resource_count[1:])
-                                    else:
-                                        player3_brick = player3_brick + int(resource_count[1:])
-
-                            else:
-                                if current_player == 1:
-                                    if resource_type == 'wood':
-                                        player1_wood = player1_wood - int(resource_count)
-                                    elif resource_type == 'sheep':
-                                        player1_sheep = player1_sheep - int(resource_count)
-                                    elif resource_type == 'wheat':
-                                        player1_wheat = player1_wheat - int(resource_count)
-                                    elif resource_type == 'stone':
-                                        player1_stone = player1_stone - int(resource_count)
-                                    else:
-                                        player1_brick = player1_brick - int(resource_count)
-                                elif current_player == 2:
-                                    if resource_type == 'wood':
-                                        player2_wood = player2_wood - int(resource_count)
-                                    elif resource_type == 'sheep':
-                                        player2_sheep = player2_sheep - int(resource_count)
-                                    elif resource_type == 'wheat':
-                                        player2_wheat = player2_wheat - int(resource_count)
-                                    elif resource_type == 'stone':
-                                        player2_stone = player2_stone - int(resource_count)
-                                    else:
-                                        player2_brick = player2_brick - int(resource_count)
-                                else:
-                                    if resource_type == 'wood':
-                                        player3_wood = player3_wood - int(resource_count)
-                                    elif resource_type == 'sheep':
-                                        player3_sheep = player3_sheep - int(resource_count)
-                                    elif resource_type == 'wheat':
-                                        player3_wheat = player3_wheat - int(resource_count)
-                                    elif resource_type == 'stone':
-                                        player3_stone = player3_stone - int(resource_count)
-                                    else:
-                                        player3_brick = player3_brick - int(resource_count)
-                        except:
-                            break
-
-                        
-                        display_text = 'player 1:'  + \
-                                    '  player 2:' \
-                                    '  player 3:' + \
-                                    '\nWood:  ' + str(player1_wood) + \
-                                        '  Wood:  '+ str(player2_wood) + \
-                                        '  Wood:  '+ str(player3_wood) + \
-                                        '\nSheep: ' + str(player1_sheep) + \
-                                        '  Sheep: '+ str(player2_sheep) + \
-                                        '  Sheep: '+ str(player3_sheep) + \
-                                        '\nWheat:' + str(player1_wheat) + \
-                                        '  Wheat:'+ str(player2_wheat) + \
-                                        '  Wheat:'+ str(player3_wheat) + \
-                                        '\nStone:  ' + str(player1_stone) + \
-                                        '  Stone:  '+ str(player2_stone) + \
-                                        '  Stone:  '+ str(player3_stone) + \
-                                        '\nBrick:   ' + str(player1_brick) + \
-                                        '  Brick:    '+ str(player2_brick) + \
-                                        '  Brick:  '+ str(player3_brick)
-                                        
-                                    
-                        '\n Sheep:' + str(player1_sheep) + \
-                        '\n Wheat:' + str(player1_wheat) + \
-                        '\n Stone:' + str(player1_stone) + \
-                        '\n Brick:' + str(player1_brick) + \
-                        
-                        '\n Sheep:' + str(player2_sheep) + \
-                        '\n Wheat:' + str(player2_wheat) + \
-                        '\n Stone:' + str(player2_stone) + \
-                        '\n Brick:' + str(player2_brick) + \
-                        
-                        '\n Sheep:' + str(player3_sheep) + \
-                        '\n Wheat:' + str(player3_wheat) + \
-                        '\n Stone:' + str(player3_stone) + \
-                        '\n Brick:' + str(player3_brick)
-                        
-                        '''
                         self.dataChanged.emit(display_text)        
                         
                     
-#test
+
 class MainWindow(QtWidgets.QMainWindow):
              
     def __init__(self):
