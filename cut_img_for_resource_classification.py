@@ -1,8 +1,8 @@
 import cv2
 import os
 
-image_path = "C:\catan_universe_project\catan_dataset\digit_detection_dataset\negative"
-output_path = 'C:/catan_universe_project/catan_dataset/resource dataset/'
+image_path = r"C:\catan_universe_project\catan_dataset\catan_resource_dataset\\temp/".replace("\\","/")
+output_path = r'C:\catan_universe_project\catan_dataset\catan_resource_dataset\\temp/'.replace("\\","/")
 
 
 for dirpath, dirnames, filenames in os.walk(image_path):

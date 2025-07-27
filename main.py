@@ -33,7 +33,8 @@ class Catan_player():
             self.sheep_count = 0
             self.brick_count = 0
             self.wood_count = 0
-            self.unknown_count = 0
+            self.unknown_count_plus = 0
+            self.unknown_count_minus = 0
             self.current_detection_count = 0
             self.player_number = player_number
 
@@ -45,7 +46,8 @@ class Catan_player():
             output_list.append(self.sheep_count)
             output_list.append(self.brick_count)
             output_list.append(self.wood_count)
-            output_list.append(self.unknown_count)
+            output_list.append(self.unknown_count_plus)
+            output_list.append(self.unknown_count_minus)
 
             return output_list
             
@@ -107,10 +109,11 @@ class CatanHelperWorker(QObject):
 
     def initialize_models(self):
 
-        model_yolo = YOLO("C:/catan_universe_project/catan_helper/best_model_yolo11.pt")
-        model_yolo_segmentagion = YOLO("C:/catan_universe_project/catan_helper/yolo11_segmentaion_all.pt")
+        #model_yolo = YOLO("C:/catan_universe_project/catan_helper/best_model_yolo11.pt")
+        model_yolo = YOLO("C:\catan_universe_project\catan_helper\yolo11m_detection.pt")
+        model_yolo_segmentagion = YOLO("C:/catan_universe_project/catan_helper/yolo11_segmentation_all_v3.pt")
         model_resnet = self.create_blank_model(freeze_layers = True)
-        model_resnet.load_state_dict(torch.load('C:/catan_universe_project/catan_helper/best_model_resnet_2.pt',
+        model_resnet.load_state_dict(torch.load('C:/catan_universe_project/catan_helper/best_model_resnet_7.pt',
                                                map_location=torch.device('cpu')))
         #mode_resnet.to(device)
         #model_yolo_digit_detection = YOLO("C:\catan_universe_project\catan_helper\yolo11_digit_detection.pt")
@@ -129,11 +132,7 @@ class CatanHelperWorker(QObject):
 
         return model_yolo, model_resnet, model_yolo_segmentagion #, model_yolo_digit_detection, resnet_mnist
 
-    def initialize_reader(self):
-
-        reader = easyocr.Reader(['en'], gpu=True)
-
-        return reader
+    
 
     def get_resource_name(self, resource_result):
 
@@ -294,7 +293,7 @@ class CatanHelperWorker(QObject):
 
         confidence = torch.nn.functional.softmax(pred[0], dim=0).max().item()
         resource_name = self.get_resource_name(resource_result)
-
+        
         return resource_name, confidence
 
     def check_for_the_same_detection(self,
@@ -335,7 +334,7 @@ class CatanHelperWorker(QObject):
         if len(sign_count_result) >= 2:
             if (sign_count_result[0] == '+') | (sign_count_result[0] == '-'):            
                 if sign_count_result[1:].isdigit():
-                    if resource_confidence >= 0.8:
+                    if resource_confidence >= 0.9:
                         return True
             
         return False
@@ -423,27 +422,54 @@ class CatanHelperWorker(QObject):
 
         if resource_type == 'wood':
             player_count = player.wood_count
-            player.wood_count = eval(formula)
+            if (eval(formula) < 0) & (player.unknown_count_plus>0):
+                player_count = player.unknown_count_plus     
+                player.unknown_count_plus = eval(formula)
+            else:
+                player.wood_count = eval(formula)
         elif resource_type == 'sheep':
             player_count = player.sheep_count
-            player.sheep_count = eval(formula)
+            if (eval(formula) < 0) & (player.unknown_count_plus>0):
+                player_count = player.unknown_count_plus     
+                player.unknown_count_plus = eval(formula)
+            else:
+                player.sheep_count = eval(formula)
         elif resource_type == 'wheat':
             player_count = player.wheat_count
-            player.wheat_count = eval(formula)
+            if (eval(formula) < 0) & (player.unknown_count_plus>0):
+                player_count = player.unknown_count_plus     
+                player.unknown_count_plus = eval(formula)
+            else:
+                player.wheat_count = eval(formula)
         elif resource_type == 'stone':
             player_count = player.stone_count
-            player.stone_count = eval(formula)
+            if (eval(formula) < 0) & (player.unknown_count_plus>0):
+                player_count = player.unknown_count_plus     
+                player.unknown_count_plus = eval(formula)
+            else:
+                player.stone_count = eval(formula)
         elif resource_type == 'brick':
             player_count = player.brick_count
-            player.brick_count = eval(formula)
-        elif resource_type == 'unknown':
-            player_count = player.unknown_count
-            player.unknown_count = eval(formula)
+            if (eval(formula) < 0) & (player.unknown_count_plus>0):
+                player_count = player.unknown_count_plus     
+                player.unknown_count_plus = eval(formula)
+            else:
+                player.brick_count = eval(formula)
+        elif resource_type == 'unknown':     
+            if sign_result == '-':
+                player_count = player.unknown_count_minus  
+                player.unknown_count_minus = eval(formula)          
+            elif sign_result == '+':      
+                player_count = player.unknown_count_plus     
+                player.unknown_count_plus = eval(formula)
+
+    
+
 
     def get_sign_and_resource_count(self,model_yolo_segmentation, box_img):
 
         
-        segmentation_result = model_yolo_segmentation(box_img,conf = 0.8)
+        segmentation_result = model_yolo_segmentation(box_img,conf = 0.7, iou=0.45)
         output_string = ''
 
         need_invert_color = False
@@ -470,7 +496,7 @@ class CatanHelperWorker(QObject):
 
             blue, green, red = cv2.split(box_img)
             inverted_img = cv2.merge([blue, red, green])
-            segmentation_result = model_yolo_segmentation(inverted_img, conf = 0.8)
+            segmentation_result = model_yolo_segmentation(inverted_img, conf = 0.7, iou=0.45)
             for each_box in segmentation_result:
 
                 result_tensor = each_box.boxes.cls
@@ -541,7 +567,7 @@ class CatanHelperWorker(QObject):
         player3 = Catan_player(player_number=3)
         count = 0
         
-        list_of_resourses = ['stone', 'wheat' ,'sheep', 'brick', 'wood', 'unknown']
+        list_of_resourses = ['stone', 'wheat' ,'sheep', 'brick', 'wood', 'unknown+', 'unknown-']
         
         with mss() as sct:
             while True:
@@ -559,7 +585,7 @@ class CatanHelperWorker(QObject):
                         box_img = results.orig_img[int(each_box.xyxy[0,1]):int(each_box.xyxy[0,3]),\
                                                         int(each_box.xyxy[0,0]):int(each_box.xyxy[0,2])]
                        
-                        cv2.imwrite('C:/catan_universe_project/testing/' + str(count) + '_' + '.png', box_img)
+                        #cv2.imwrite('C:/catan_universe_project/testing/' + str(count) + '_' + '.png', box_img)
                         count = count + 1
                         current_player = self.get_current_player_by_region(each_box)   
                         sign_count_result = self.get_sign_and_resource_count(model_yolo_segmentation,box_img)                  
@@ -585,24 +611,26 @@ class CatanHelperWorker(QObject):
                                 
                                 self.check_and_add_resource_to_player(delay_delta, player3, sign_result, resource_count, resource_type)
 
-                        #if len(sign_count_result) > 0:
-                        #    cv2.imwrite('C:/catan_universe_project/testing/' + str(count) + '_' + str(sign_count_result[0]) + '_' + \
-                        #        str(sign_count_result[1:]) + '_' + resource_type + '_' + 'conf_' + str(resource_confidence) +'.png', box_img)
+                            #if len(sign_count_result) > 0:
+                            #    cv2.imwrite('C:/catan_universe_project/testing/' + str(count) + '_' + str(sign_count_result[0]) + '_' + \
+                            #        str(sign_count_result[1:]) + '_' + resource_type + '_' + 'conf_' + str(resource_confidence) +'.png', box_img)
 
+
+                        
                         pl1_list = player1.get_list_of_resources()
                         pl2_list = player2.get_list_of_resources()
                         pl3_list = player3.get_list_of_resources()
 
-                        df = pd.DataFrame({'Res':list_of_resourses, 'Player1': player1.get_list_of_resources(), 'Player2': player2.get_list_of_resources(), \
-                                            'Player3': player3.get_list_of_resources()})
+                        #df = pd.DataFrame({'Res':list_of_resourses, 'Player1': player1.get_list_of_resources(), 'Player2': player2.get_list_of_resources(), \
+                        #                    'Player3': player3.get_list_of_resources()})
                        
                         #aligned_str = self.format_dataframe(df)
                         #print(self.format_dataframe(df))
                         
 
                      
-                        df = pd.DataFrame({'':list_of_resourses, 'Player1': player1.get_list_of_resources(), 'Player2': player2.get_list_of_resources(), \
-                                            'Player3': player3.get_list_of_resources()})
+                        #df = pd.DataFrame({'':list_of_resourses, 'Player1': player1.get_list_of_resources(), 'Player2': player2.get_list_of_resources(), \
+                        #                    'Player3': player3.get_list_of_resources()})
                         '''
                         aligned_str = df.to_string(index=False, formatters={
                                             'Res type': '{:<15}'.format,      # Left align
@@ -611,14 +639,15 @@ class CatanHelperWorker(QObject):
                                             'Player3': '{:^5}'.format},)
                         '''
 
-                        col_widths = [8, 8, 8, 8]  # Adjust as needed
+                        col_widths = [9, 8, 8, 8]  # Adjust as needed
                         aligned_str = self.format_columns([['Res', 'Player1', 'Player2', 'Player3' ], 
                                                            [list_of_resourses[0], pl1_list[0], pl2_list[0], pl3_list[0]],
                                                            [list_of_resourses[1], pl1_list[1], pl2_list[1], pl3_list[1]],
                                                            [list_of_resourses[2], pl1_list[2], pl2_list[2], pl3_list[2]],
                                                            [list_of_resourses[3], pl1_list[3], pl2_list[3], pl3_list[3]],
                                                            [list_of_resourses[4], pl1_list[4], pl2_list[4], pl3_list[4]],
-                                                           [list_of_resourses[5], pl1_list[5], pl2_list[5], pl3_list[5]]
+                                                           [list_of_resourses[5], pl1_list[5], pl2_list[5], pl3_list[5]],
+                                                           [list_of_resourses[6], pl1_list[6], pl2_list[6], pl3_list[6]]
                                                            ], col_widths)
                                
                         self.dataChanged.emit(aligned_str)    
