@@ -5,7 +5,7 @@ def nothing(x):
     pass
 
 # Load image
-image = cv2.imread(' 4.png')
+image = cv2.imread('C:/catan_universe_project/catan_dataset/digit_detection_dataset/negative/0_Catan 5.png')
 
 # Create a window
 cv2.namedWindow('image')
