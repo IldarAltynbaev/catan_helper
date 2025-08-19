@@ -91,11 +91,10 @@ class CatanHelperWorker(QObject):
         model = models.resnet34(pretrained=True)
         if freeze_layers:
             for param in model.parameters():
-                #if isinstance(param, torch.nn.Conv2d):
                     param.requires_grad = False
 
         model.fc = torch.nn.Linear(model.fc.in_features, 6)    
-        #model = model.to(device)
+       
         return model
     
     def create_transforms(self):
@@ -542,8 +541,8 @@ class CatanHelperWorker(QObject):
         screen_height = monitor.height
         
         one_fifth_hight = screen_height // 5
-        moniro_top = {"top": 0, "left": 0, "width": screen_width, "height": one_fifth_hight}
-        selected_region = moniro_top
+        monitor_top = {"top": 0, "left": 0, "width": screen_width, "height": one_fifth_hight}
+        selected_region = monitor_top
 
         model_yolo, model_resnet, model_yolo_segmentation = self.initialize_models()
 
